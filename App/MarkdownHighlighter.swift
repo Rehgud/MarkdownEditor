@@ -107,6 +107,9 @@ enum MarkdownHighlighter {
         while index < text.length {
             let line = text.lineRange(for: NSRange(location: index, length: 0))
             index = NSMaxRange(line)
+            var first = line.location
+            while first < NSMaxRange(line), first - line.location <= 3, text.character(at: first) == 0x20 { first += 1 }
+            guard first < NSMaxRange(line), first - line.location <= 3, [0x60, 0x7E].contains(text.character(at: first)) else { continue }
             let content = text.substring(with: line)
             let body = content.drop { $0 == " " }
             guard content.count - body.count <= 3, let fence = body.first, fence == "`" || fence == "~" else { continue }

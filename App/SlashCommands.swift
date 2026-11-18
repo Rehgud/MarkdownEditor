@@ -114,9 +114,11 @@ final class SlashMenu {
         let line = NSRange(location: fullLine.location, length: lineEnd - fullLine.location)
         // The line as it reads without the "/query" (and the space typed before it).
         var head = text.substring(with: NSRange(location: line.location, length: slash - line.location))
-        while head.last?.isWhitespace == true { head.removeLast() }
+        if head.contains(where: { !$0.isWhitespace }) { while head.last?.isWhitespace == true { head.removeLast() } }
         let rest = head + text.substring(with: NSRange(location: NSMaxRange(query), length: lineEnd - NSMaxRange(query)))
         let restIsEmpty = rest.allSatisfy(\.isWhitespace)
+        // Inserted text follows the document's line endings (CRLF files stay CRLF).
+        let newline = text.range(of: "\r\n").location == NSNotFound ? "\n" : "\r\n"
         close()
 
         func replace(_ range: NSRange, with string: String, caret: Int) {
@@ -124,8 +126,9 @@ final class SlashMenu {
             textView.setSelectedRange(NSRange(location: range.location + caret, length: 0))
         }
         func place(_ open: String, _ close: String = "", ownLine: Bool) {
+            let open = open.replacingOccurrences(of: "\n", with: newline), close = close.replacingOccurrences(of: "\n", with: newline)
             if ownLine, !restIsEmpty {
-                replace(line, with: rest + "\n" + open + close, caret: (rest + "\n" + open).utf16.count)
+                replace(line, with: rest + newline + open + close, caret: (rest + newline + open).utf16.count)
             } else {
                 replace(query, with: open + close, caret: open.utf16.count)
             }
@@ -139,7 +142,7 @@ final class SlashMenu {
         case .insert(let open, let close, let ownLine):
             place(open, close, ownLine: ownLine)
         case .date:
-            place(Date.now.formatted(.iso8601.year().month().day()), ownLine: false)
+            place(Date.now.formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day()), ownLine: false)
         case .emoji:
             replace(query, with: "", caret: 0)
             NSApp.orderFrontCharacterPalette(textView)
@@ -148,9 +151,9 @@ final class SlashMenu {
             // Named first, like any new file; cancelling just drops the "/페이지".
             guard let file = NewFile.create(in: folder, suggesting: .markdown) else { return replace(query, with: "", caret: 0) }
             // <…> keeps a name with spaces readable in the source: [제목 없음](<제목 없음.md>). What a link
-            // reads specially is escaped: \ [ ] in the text; \ % # ? < > in the address ("C# 공부.md").
-            var title = file.deletingPathExtension().lastPathComponent, address = file.lastPathComponent
-            for character in ["\\", "[", "]"] { title = title.replacingOccurrences(of: character, with: "\\" + character) }
+            // reads specially is escaped: ASCII punctuation in the text; \ % # ? < > in the address ("C# 공부.md").
+            let title = Self.escapedLinkText(file.deletingPathExtension().lastPathComponent)
+            var address = file.lastPathComponent
             for (raw, escaped) in [("%", "%25"), ("\\", "%5C"), ("#", "%23"), ("?", "%3F"), ("<", "%3C"), (">", "%3E")] {
                 address = address.replacingOccurrences(of: raw, with: escaped)
             }
@@ -163,17 +166,22 @@ final class SlashMenu {
                 return NSSound.beep()
             }
             let toc = headings.map { heading in
-                let title = heading.title.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
-                return String(repeating: "  ", count: heading.level - top) + "- [\(title)](#\(heading.id))"
+                String(repeating: "  ", count: heading.level - top) + "- [\(Self.escapedLinkText(heading.title))](#\(heading.id))"
             }
             place(toc.joined(separator: "\n"), ownLine: true)
         case .duplicate:
-            replace(line, with: rest + "\n" + rest, caret: rest.utf16.count)
+            replace(line, with: rest + newline + rest, caret: rest.utf16.count)
         case .delete:
             // The last line has no newline of its own, so take the one before it.
-            let start = fullLine.location > 0 && NSMaxRange(fullLine) == lineEnd ? fullLine.location - 1 : fullLine.location
+            var start = fullLine.location > 0 && NSMaxRange(fullLine) == lineEnd ? fullLine.location - 1 : fullLine.location
+            if start < fullLine.location, start > 0, text.character(at: start) == 0x0A, text.character(at: start - 1) == 0x0D { start -= 1 }
             replace(NSRange(location: start, length: NSMaxRange(fullLine) - start), with: "", caret: 0)
         }
+    }
+
+    /// Backslash-escapes every ASCII punctuation character, so a heading's `<`, `&`, `\` or backtick stays literal in link text.
+    private static func escapedLinkText(_ text: String) -> String {
+        text.reduce(into: "") { $0 += $1.isASCII && ($1.isPunctuation || $1.isSymbol) ? "\\\($1)" : "\($1)" }
     }
 
     /// Indentation, then an existing block marker (heading, quote or callout, list, to-do), then the text.
@@ -222,7 +230,10 @@ private final class SlashPanel: NSPanel {
 
     func show(below anchor: NSRect, rows: Int, in window: NSWindow) {
         setContentSize(NSSize(width: 280, height: CGFloat(min(rows, 7)) * Self.rowHeight + 12))
-        setFrameTopLeftPoint(NSPoint(x: anchor.minX - 10, y: anchor.minY - 6))
+        let height = frame.height
+        // Under the Dock or off the screen's bottom: open above the "/" instead.
+        let fits = anchor.minY - 6 - height >= (window.screen?.visibleFrame.minY ?? -.greatestFiniteMagnitude)
+        setFrameTopLeftPoint(NSPoint(x: anchor.minX - 10, y: fits ? anchor.minY - 6 : anchor.maxY + 6 + height))
         if parent == nil { window.addChildWindow(self, ordered: .above) }
     }
 

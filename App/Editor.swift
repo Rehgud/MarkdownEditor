@@ -58,7 +58,7 @@ struct Editor: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.text = $text
         coordinator.slashMenu.folder = folder
-        guard let textView = coordinator.textView, textView.string != text else { return }
+        guard let textView = coordinator.textView, !(textView.string as NSString).isEqual(to: text) else { return }
         textView.undoManager?.removeAllActions() // their ranges point into the text being replaced
         textView.string = text
         coordinator.textChanged()
@@ -140,7 +140,7 @@ struct Editor: NSViewRepresentable {
             var end = NSMaxRange(lines)
             while end > lines.location, [0x0A, 0x0D].contains(source.character(at: end - 1)) { end -= 1 }
             let wholeLines = selection.length > 0 && selection.location == lines.location && NSMaxRange(selection) >= end
-            guard outward || wholeLines || source.substring(with: selection).contains("\n") else {
+            guard outward || wholeLines || source.range(of: "\n", range: selection).location != NSNotFound else {
                 textView.insertText(unit, replacementRange: selection)
                 return true
             }
@@ -238,7 +238,7 @@ struct Editor: NSViewRepresentable {
             storageVersion += 1
             DispatchQueue.main.async { [weak self] in
                 guard let self, seenVersion != storageVersion, let textView else { return }
-                if text.wrappedValue != textView.string { text.wrappedValue = textView.string }
+                if !(textView.string as NSString).isEqual(to: text.wrappedValue) { text.wrappedValue = textView.string }
                 textChanged()
             }
         }
@@ -255,8 +255,19 @@ struct Editor: NSViewRepresentable {
             }
             codeBlocksStale = true
             measuredThrough = 0
-            recolor(source)
+            recolorTask?.cancel()
+            if source.length > 200_000 { // re-tokenizing a big file per keystroke is what makes typing lag
+                recolorTask = Task { [weak self] in
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard !Task.isCancelled, let self, let view = self.textView else { return }
+                    recolor(view.string as NSString)
+                }
+            } else {
+                recolor(source)
+            }
         }
+
+        private var recolorTask: Task<Void, Never>?
 
         private func recolor(_ source: NSString) {
             if let language {
