@@ -17,7 +17,23 @@ func check(_ code: String, _ language: String, _ expected: [String], line: Int =
 check("if [ $# -eq 0 ]; then # done", "sh", ["keyword if", "property $#", "number 0", "keyword then", "comment # done"])
 check("echo a#b", "sh", [])
 check("tr '\\' x; echo \"$HOME\"", "sh", ["string '\\'", "string \"$HOME\""])
-check("cat <<EOF\nit's here\nEOF\nexit 1", "sh", ["string 's here", "keyword exit", "number 1"])
+// A here-document is one string from the line break before its text, so its apostrophe opens none.
+check("cat <<EOF\nit's here\nEOF\nexit 1", "sh", ["string \nit's here\nEOF", "keyword exit", "number 1"])
+// `<<` in `(( ))` shifts and `<<<` is a here-string: neither opens a here-document.
+check("cat <<-'E' | wc; x=$(( n << m ))\n\tit's\n\tE\necho $((1 << 2)) <<< it\nexit", "sh",
+      ["string \n\tit's\n\tE", "number 1", "number 2", "keyword exit"])
+// `\'` outside a string opens none; `$'…'` has escapes.
+check("awk '\n{ print $1 }\n' f; echo 'it'\\''s' $'it\\'s' it\\'s\nexit", "sh",
+      ["string '\n{ print $1 }\n'", "string 'it'", "string 's'", "string 'it\\'s'", "keyword exit"])
+// Ruby: `<<~`, `<<-` or a bare upper-case word; `b << c`, `d <<e`, `1<<F` and `class <<self` open none.
+check("a = <<~SQL + <<EOS\n  it's\n  SQL\nx\nEOS\nb << c; d <<e; 1<<F\nclass <<self\ns = \"a\nb\"", "ruby",
+      ["string \n  it's\n  SQL\nx\nEOS", "number 1", "keyword class", "keyword self", "string \"a\nb\""])
+// PHP: the closing word may be indented and followed by code.
+check("<?php $a = <<<EOT\nit's $x\n  EOT;\n$b = <<<'E'\nE . 1;", "php",
+      ["property $a", "string \nit's $x\n  EOT", "property $b", "string \nE", "number 1"])
+// YAML block scalars: the lines indented deeper than the key (or the list item's dash) are text.
+check("- run: |- # sh\n    echo it's\n\n    b: 1\n  env: a > b\n- >\n  x\n- y", "yaml",
+      ["property run", "comment # sh", "string \n    echo it's\n\n    b: 1", "property env", "string \n  x"])
 // Rust: `'"'` is a character, `'a` a lifetime.
 check("let c = '\"'; let x = 1;", "rust", ["keyword let", "string '\"'", "keyword let", "number 1"])
 check("fn f<'a>(x: &'a str)", "rust", ["keyword fn", "type str"])
@@ -25,6 +41,10 @@ check("fn f<'a>(x: &'a str)", "rust", ["keyword fn", "type str"])
 check("m.get(k); x.default; const n = 1", "js", ["function get", "keyword const", "number 1"])
 check("1.max(2) + 0x1E-1 + 1_000 + 2.5e-3", "rust", ["number 1", "function max", "number 2", "number 0x1E", "number 1", "number 1_000", "number 2.5e-3"])
 check("int x = 1'000;", "cpp", ["type int", "number 1'000"])
+// Raw strings: Rust closes at as many `#`, C++ at the same delimiter; `r#type` is a name.
+check("let s = r#\"a \"b\" \\\"#; let t = br\"\\\"; r#type", "rust",
+      ["keyword let", "string r#\"a \"b\" \\\"#", "keyword let", "string br\"\\\"", "keyword type"])
+check("auto s = u8R\"x(a \"b\" )\" \\)x\"; int n = 1;", "cpp", ["keyword auto", "string u8R\"x(a \"b\" )\" \\)x\"", "type int", "number 1"])
 // Markup: tag names are ASCII.
 check("<p>a <한글> b</p>", "html", ["tag p", "tag p"])
 // YAML and SCSS comments need a space before them; URLs stay intact.
@@ -34,6 +54,7 @@ check("background: url(http://x.com/a.png)", "scss", ["property background", "fu
 // Raw strings: Go backticks, SQL quotes.
 check("s := `C:\\`; x := 1", "go", ["string `C:\\`", "number 1"])
 check("SELECT 'C:\\' FROM t -- x", "sql", ["keyword SELECT", "string 'C:\\'", "keyword FROM", "comment -- x"])
+check("SELECT 'a\nb', \"c\nd\" FROM t", "sql", ["keyword SELECT", "string 'a\nb'", "string \"c\nd\"", "keyword FROM"])
 check("{\"a\": 1, \"b\": \"x\"}", "json", ["property \"a\"", "number 1", "property \"b\"", "string \"x\""])
 
 // Comments added from the preview: the language's syntax, above the line, indented like it, and
@@ -60,8 +81,33 @@ let comments: [(String, String)] = [
     (insertion("<?xml version=\"1.0\"?>\n<a/>", 1, "xml"), "<?xml version=\"1.0\"?>\n<!-- 메모 -->\n<a/>"),
     (insertion("#!/bin/zsh", 1, "shell"), "#!/bin/zsh\n# 메모\n"),
     (insertion("if x:\n\n    y()\n", 2, "python"), "if x:\n    # 메모\n\n    y()\n"),
+    // Not in a here-document (an empty one too), a string that spans lines, or a YAML block scalar.
+    (insertion("cat > out.txt <<EOF\nline1\nline2\nEOF", 3, "shell"), "# 메모\ncat > out.txt <<EOF\nline1\nline2\nEOF"),
+    (insertion("cat <<EOF\nEOF\n", 2, "shell"), "# 메모\ncat <<EOF\nEOF\n"),
+    (insertion("cat <<EOF\r\na\r\nEOF\r\necho\r\n", 4, "shell"), "cat <<EOF\r\na\r\nEOF\r\n# 메모\r\necho\r\n"),
+    (insertion("awk '\n{ print }\n' f", 2, "shell"), "# 메모\nawk '\n{ print }\n' f"),
+    (insertion("s = 'a\nb'", 2, "ruby"), "# 메모\ns = 'a\nb'"),
+    (insertion("SELECT 'a\nb';", 2, "sql"), "-- 메모\nSELECT 'a\nb';"),
+    (insertion("let s = r#\"\na\"b\n\"#;", 3, "rust"), "// 메모\nlet s = r#\"\na\"b\n\"#;"),
+    (insertion("auto s = R\"(\na\nb)\";", 2, "cpp"), "// 메모\nauto s = R\"(\na\nb)\";"),
+    (insertion("msg: |\n  hello\n  world", 3, "yaml"), "# 메모\nmsg: |\n  hello\n  world"),
+    // `?>` would end PHP mode; a `>` in an attribute value doesn't end its tag.
+    (insertion("<?php\n$x = 1;", 2, "php", comment: "see ?> tag"), "<?php\n// see ? > tag\n$x = 1;"),
+    (insertion("<xsl:if test=\"count(x) > 1\"\n        name=\"y\">", 2, "xml"), "<!-- 메모 -->\n<xsl:if test=\"count(x) > 1\"\n        name=\"y\">"),
+    // A CRLF file that is all first line gets one line break, not two.
+    (insertion("#!/bin/sh\r\n", 1, "shell"), "#!/bin/sh\r\n# 메모\r\n"),
+    (insertion("#!/usr/bin/python\r\n# coding: utf-8", 1, "python"), "#!/usr/bin/python\r\n# coding: utf-8\r\n# 메모\r\n"),
+    // JSX children take `{/* */}`; a generic's `>` is no tag.
+    (insertion("return (\n  <div>\n    Hello\n  </div>\n);", 3, "javascript"), "return (\n  <div>\n    {/* 메모 */}\n    Hello\n  </div>\n);"),
+    (insertion("return (\n  <div>\n  </div>\n);", 3, "typescript", comment: "a */ b"), "return (\n  <div>\n  {/* a * / b */}\n  </div>\n);"),
+    (insertion("let x: Array<number>\n  = []", 2, "typescript"), "let x: Array<number>\n  // 메모\n  = []"),
 ]
 for (got, want) in comments where got != want { failures += 1; print("✗ comment: \(got.debugDescription)") }
+
+// Only where JSX children go: not in plain code, a callback inside `{ }` or a tag still open.
+let jsx = "const a = (\n  <ul>\n    {items.map(i => (\n      <li>{i}</li>\n    ))}\n    <li\n      key=\"x\"\n    >\n      {last}\n    </li>\n  </ul>\n);"
+let jsxChildren = (1...12).filter { insertion(jsx, $0, "javascript").contains("{/* 메모 */}") }
+if jsxChildren != [3, 6, 9, 10, 11] { failures += 1; print("✗ JSX comment lines: \(jsxChildren)") }
 
 let escaped = escapeHTML("<a href=\"x\">&</a>")
 if escaped != "&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;" { failures += 1; print("✗ escapeHTML: \(escaped)") }
