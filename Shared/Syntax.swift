@@ -55,6 +55,16 @@ struct CodeLanguage: Sendable {
     var multilineStrings: Set<String> = []
     /// Delimiters whose backslashes are literal: shell and SQL `'…'`, Go's `` `…` ``.
     var rawStrings: Set<String> = []
+    /// What opens Rust's `r#"…"#` (lower case) and C++'s `R"x(…)x"` (upper case).
+    var rawStringPrefixes: Set<String> = []
+    /// Here-documents run to a line that is the word they name: shell `<< WORD`, Ruby `<<~WORD`,
+    /// PHP `<<<WORD`.
+    var heredoc: Heredoc? = nil
+    enum Heredoc { case shell, ruby, php }
+    /// Shell: `\'` outside a string is a plain character, and `$'…'` has escapes.
+    var backslashEscapes = false
+    /// YAML's `key: |` and `key: >`: the deeper-indented lines below are text.
+    var blockScalars = false
     /// Rust: `'a'` is a character, a lone `'a` a lifetime.
     var charLiterals = false
     var caseInsensitive = false
@@ -199,7 +209,7 @@ extension CodeLanguage {
         constants: words("true false"),
         builtinTypes: words("i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f32 f64 bool char str"),
         lineComments: ["//"], blockComment: ("/*", "*/"),
-        strings: ["\""], multilineStrings: ["\""], charLiterals: true,
+        strings: ["\""], multilineStrings: ["\""], rawStringPrefixes: ["r", "br", "cr"], charLiterals: true,
         bangMacros: true)
 
     private static let cKeywords = """
@@ -228,7 +238,7 @@ extension CodeLanguage {
         constants: words("true false nullptr NULL"),
         builtinTypes: words(cTypes + " wchar_t char8_t char16_t char32_t"),
         lineComments: ["//"], blockComment: ("/*", "*/"),
-        hashDirectives: true)
+        rawStringPrefixes: ["R", "LR", "uR", "UR", "u8R"], hashDirectives: true)
 
     static let shell = CodeLanguage(
         keywords: words("""
@@ -237,9 +247,7 @@ extension CodeLanguage {
             """),
         constants: words("true false"),
         lineComments: ["#"], commentsAfterSpace: true,
-        // `'` ends with its line: an apostrophe in heredoc text or `it\'s` would otherwise color
-        // the rest of the script.
-        multilineStrings: ["\""], rawStrings: ["'"],
+        multilineStrings: ["\"", "'"], rawStrings: ["'"], heredoc: .shell, backslashEscapes: true,
         capitalizedTypes: false, dollarVariables: true)
 
     static let ruby = CodeLanguage(
@@ -250,6 +258,7 @@ extension CodeLanguage {
             """),
         constants: words("true false nil"),
         lineComments: ["#"],
+        multilineStrings: ["\"", "'"], heredoc: .ruby,
         dollarVariables: true, atWords: .property)
 
     static let php = CodeLanguage(
@@ -261,7 +270,7 @@ extension CodeLanguage {
             """),
         constants: words("true false null TRUE FALSE NULL"),
         lineComments: ["//", "#"], blockComment: ("/*", "*/"),
-        multilineStrings: ["\"", "'"],
+        multilineStrings: ["\"", "'"], heredoc: .php,
         dollarVariables: true)
 
     static let sql = CodeLanguage(
@@ -278,7 +287,7 @@ extension CodeLanguage {
             boolean blob json jsonb serial uuid
             """),
         lineComments: ["--"], blockComment: ("/*", "*/"),
-        strings: ["'", "\""], rawStrings: ["'"],
+        strings: ["'", "\""], multilineStrings: ["'", "\""], rawStrings: ["'"],
         caseInsensitive: true, capitalizedTypes: false)
 
     static let json = CodeLanguage(
@@ -289,7 +298,7 @@ extension CodeLanguage {
 
     static let yaml = CodeLanguage(
         constants: words("true false null yes no on off"),
-        lineComments: ["#"], commentsAfterSpace: true, rawStrings: ["'"],
+        lineComments: ["#"], commentsAfterSpace: true, rawStrings: ["'"], blockScalars: true,
         capitalizedTypes: false, keyedStrings: true, keySeparator: 0x3A, hyphenatedWords: true,
         indentsAfterColon: true)
 
@@ -317,7 +326,8 @@ extension CodeLanguage {
 
 /// `text` as a comment on a line of its own in language `id` (a `CodeLanguage.named` id), safe to drop
 /// into the code: line breaks become spaces, and what would end the comment early is broken up
-/// (`*/`, `--` in markup, a backslash ending a C line). Nil for JSON and languages without comments.
+/// (`*/`, `--` in markup, a backslash ending a C line, PHP's `?>`). Nil for JSON and languages
+/// without comments.
 func commentLine(_ text: String, language id: String) -> String? {
     guard id != "json", let language = CodeLanguage.named(id) else { return nil }
     let breaks = CharacterSet.newlines.union(.controlCharacters)
@@ -329,6 +339,8 @@ func commentLine(_ text: String, language id: String) -> String? {
     if let marker = language.lineComments.first {
         // C and C++ splice a line that ends in a backslash onto the next one.
         if id == "c" || id == "cpp" { while text.hasSuffix("\\") { text.removeLast() } }
+        // PHP leaves code at `?>`, in a comment too.
+        if id == "php" { text = text.replacingOccurrences(of: "?>", with: "? >") }
         return "\(marker) \(text)"
     }
     guard let block = language.blockComment else { return nil }
@@ -340,7 +352,8 @@ func commentLine(_ text: String, language id: String) -> String? {
 /// breaking anything, and what to insert there. The spot moves up while that line starts inside a
 /// multi-line string, comment or tag, or continues the line above (`\`); and below a first line
 /// something else reads (`#!`, `<?xml`, a Python coding line). The comment takes that line's
-/// indentation (the next non-blank line's, for a blank one) and the file's line ending.
+/// indentation (the next non-blank line's, for a blank one) and the file's line ending, and among
+/// JSX children a `// …` comment becomes `{/* … */}`.
 func commentInsertion(_ comment: String, aboveLine line: Int, in text: String, language id: String) -> (location: Int, text: String) {
     let source = text as NSString
     var starts = [0]
@@ -361,17 +374,29 @@ func commentInsertion(_ comment: String, aboveLine line: Int, in text: String, l
     }
     let language = CodeLanguage.named(id)
     let tokens = language.map { tokenize(text, as: $0) } ?? []
+    func isCode(_ offset: Int) -> Bool {
+        !tokens.contains { [.string, .comment].contains($0.kind) && NSLocationInRange(offset, $0.range) }
+    }
+    /// The last `mark` before `offset` that is code: an attribute value may hold `<` and `>`.
+    func last(_ mark: String, before offset: Int) -> Int {
+        var end = offset
+        while case let found = source.range(of: mark, options: .backwards, range: NSRange(location: 0, length: end)).location,
+              found != NSNotFound {
+            if isCode(found) { return found }
+            end = found
+        }
+        return NSNotFound
+    }
     var index = min(max(line - 1, firstFree), starts.count - 1)
     while index > firstFree {
         let start = starts[index]
         if let token = tokens.first(where: { [.string, .comment].contains($0.kind) && $0.range.location < start && start < NSMaxRange($0.range) }) {
             index = max(lineIndex(of: token.range.location), firstFree)
         } else if language?.markup == true,
-                  case let open = source.range(of: "<", options: .backwards, range: NSRange(location: 0, length: start)),
-                  open.location != NSNotFound,
-                  case let close = source.range(of: ">", options: .backwards, range: NSRange(location: 0, length: start)),
-                  close.location == NSNotFound || close.location < open.location {
-            index = max(lineIndex(of: open.location), firstFree)
+                  case let open = last("<", before: start), open != NSNotFound,
+                  case let close = last(">", before: start),
+                  close == NSNotFound || close < open {
+            index = max(lineIndex(of: open), firstFree)
         } else if content(index - 1).hasSuffix("\\") {
             index -= 1
         } else {
@@ -381,11 +406,43 @@ func commentInsertion(_ comment: String, aboveLine line: Int, in text: String, l
     let newline = source.range(of: "\r\n").location == NSNotFound ? "\n" : "\r\n"
     // A file that is all first line: the comment goes after it, on a line of its own.
     if index < firstFree {
-        return (source.length, (text.hasSuffix("\n") ? "" : newline) + comment + newline)
+        // UTF-16: "\r\n" is one Character, and that doesn't end in "\n".
+        return (source.length, (text.utf16.last == 0x0A ? "" : newline) + comment + newline)
     }
     var indentLine = index
     while indentLine + 1 < starts.count, content(indentLine).allSatisfy({ $0 == " " || $0 == "\t" }) { indentLine += 1 }
     let indent = String(content(indentLine).prefix { $0 == " " || $0 == "\t" })
+    /// Whether the comment lands among JSX children, where `//` would be text on the page: the
+    /// line closes a tag, or the nearest less-indented line above ends an opening tag and nothing
+    /// opened since (a `{`, another tag) is still open. Anything less sure is code.
+    /// shortcut: indentation stands in for parsing JSX, so oddly indented children keep `//`; parse it if that bites.
+    func insideJSXChildren() -> Bool {
+        if content(indentLine).dropFirst(indent.count).hasPrefix("</") { return true }
+        var parent = index - 1
+        while parent >= 0, content(parent).prefix(indent.count).allSatisfy({ $0 == " " || $0 == "\t" }) { parent -= 1 }
+        guard parent >= 0, case let head = content(parent).trimmingCharacters(in: .whitespaces),
+              head.hasSuffix(">"), !head.hasSuffix("/>"), !head.hasSuffix("=>") else { return false }
+        let close = source.range(of: ">", options: .backwards, range: NSRange(location: 0, length: starts[parent + 1])).location
+        // A tag follows space or punctuation: the `<` of `Array<T>` and `a <b` follows a word.
+        guard isCode(close), case let open = last("<", before: close), open != NSNotFound,
+              source.substring(with: NSRange(location: max(open - 1, 0), length: min(open, 1) + 2))
+                  .range(of: #"^[^\w)\]]?<[A-Za-z>]$"#, options: .regularExpression) != nil else { return false }
+        var depth = 0, tagOpen = false
+        for offset in close..<starts[index] {
+            let c = source.character(at: offset)
+            guard [0x7B, 0x7D, 0x3C, 0x3E].contains(c), isCode(offset) else { continue }
+            if c == 0x7B || c == 0x7D {
+                depth += c == 0x7B ? 1 : -1
+            } else if depth == 0 {
+                tagOpen = c == 0x3C && (0x61...0x7A).contains(source.character(at: offset + 1) | 0x20)
+            }
+        }
+        return depth == 0 && !tagOpen
+    }
+    var comment = comment
+    if id == "javascript" || id == "typescript", comment.hasPrefix("// "), insideJSXChildren() {
+        comment = "{/* " + comment.dropFirst(3).replacingOccurrences(of: "*/", with: "* /") + " */}"
+    }
     return (starts[index], indent + comment + newline)
 }
 
@@ -467,6 +524,7 @@ private struct CodeScanner {
     private static let (hash, dollar, dot, plus, minus, slash) = (UInt16(0x23), UInt16(0x24), UInt16(0x2E), UInt16(0x2B), UInt16(0x2D), UInt16(0x2F))
     private static let (colon, less, greater, question, at, bang) = (UInt16(0x3A), UInt16(0x3C), UInt16(0x3E), UInt16(0x3F), UInt16(0x40), UInt16(0x21))
     private static let (backslash, openParen, openBrace, closeBrace, ampersand, semicolon) = (UInt16(0x5C), UInt16(0x28), UInt16(0x7B), UInt16(0x7D), UInt16(0x26), UInt16(0x3B))
+    private static let (carriageReturn, closeParen, pipe, tilde) = (UInt16(0x0D), UInt16(0x29), UInt16(0x7C), UInt16(0x7E))
 
     private var count: Int { units.count }
 
@@ -538,6 +596,108 @@ private struct CodeScanner {
         return count
     }
 
+    /// Where the raw string whose prefix (`r`, `u8R`) ends at `i` closes: Rust's `r#"…"#` at as
+    /// many `#`, C++'s `R"x(…)x"` at the same `x`. Nil when no string opens there (`r#type`).
+    private func endOfRawString(from i: Int) -> Int? {
+        var j = i
+        while j < count, units[j] == Self.hash { j += 1 }
+        guard j < count, units[j] == Self.quote else { return nil }
+        var closing = [Self.quote] + units[i..<j]
+        if units[i - 1] == 0x52 {
+            var paren = j + 1
+            while paren < count, ![Self.openParen, Self.quote, Self.newline].contains(units[paren]) { paren += 1 }
+            guard paren < count, units[paren] == Self.openParen else { return nil }
+            closing = [Self.closeParen] + units[(j + 1)..<paren] + [Self.quote]
+            j = paren
+        }
+        j += 1
+        while j < count, !matches(closing, at: j) { j += 1 }
+        return min(count, j + closing.count)
+    }
+
+    /// The word a here-document opener at `i` names (`<<EOF`, `<<-'EOF'`, `<<~SQL`, `<<<"EOT"`),
+    /// whether its closing line may be indented, and where the opener ends.
+    private func heredocOpener(at i: Int, _ style: CodeLanguage.Heredoc) -> (word: [UInt16], indented: Bool, end: Int)? {
+        let php = style == .php, ruby = style == .ruby
+        var j = i + (php ? 3 : 2)
+        // `<<<` in a shell is a here-string, and Ruby's `1<<N` shifts.
+        guard matches(Array(repeating: Self.less, count: j - i), at: i), i == 0 || units[i - 1] != Self.less,
+              !(ruby && i > 0 && Self.isWordChar(units[i - 1])) else { return nil }
+        var indented = php
+        if !php, j < count, units[j] == Self.minus || units[j] == Self.tilde { indented = true; j += 1 }
+        // Ruby's `a << b` appends.
+        if !ruby { while j < count, units[j] == Self.space || units[j] == Self.tab { j += 1 } }
+        if style == .shell, j < count, units[j] == Self.backslash { j += 1 }
+        let quoted = j < count && (units[j] == Self.quote || units[j] == Self.apostrophe)
+        let start = quoted ? j + 1 : j
+        // shortcut: the word is an identifier, so `<<END-1` and `<<!` open nothing; widen it if such scripts turn up.
+        guard start < count, Self.isWordStart(units[start]) else { return nil }
+        let end = endOfWord(from: start)
+        if quoted, !(end < count && units[end] == units[j]) { return nil }
+        // Ruby's `x <<y` appends and `class <<self` opens a class: a bare word is upper case.
+        if ruby, !indented, !quoted, !Self.isUpper(units[start]) { return nil }
+        if style == .shell, insideArithmetic(i) { return nil }
+        return (Array(units[start..<end]), indented, quoted ? end + 1 : end)
+    }
+
+    /// Shell: after a `((` still open on its line, `<<` shifts bits.
+    private func insideArithmetic(_ i: Int) -> Bool {
+        var j = i - 1
+        while j > 0, units[j] != Self.newline {
+            if units[j] == units[j - 1], units[j] == Self.closeParen { return false }
+            if units[j] == units[j - 1], units[j] == Self.openParen { return true }
+            j -= 1
+        }
+        return false
+    }
+
+    /// Where the here-document whose text starts after the line break at `i` ends: after `word`
+    /// on the line that closes it.
+    private func endOfHeredoc(from i: Int, word: [UInt16], indented: Bool) -> Int {
+        var end = i
+        while end < count {
+            var start = end + 1
+            end = endOfLine(from: start)
+            if indented { while start < end, units[start] == Self.space || units[start] == Self.tab { start += 1 } }
+            guard matches(word, at: start) else { continue }
+            let after = start + word.count
+            let rest = after < end ? units[after] : Self.newline
+            // PHP's closing line may go on (`EOT;`); a shell or Ruby one is the word alone.
+            if language.heredoc == .php ? !Self.isWordChar(rest) : rest == Self.newline || (rest == Self.carriageReturn && after + 1 == end) {
+                return after
+            }
+        }
+        return count
+    }
+
+    /// Where the text of the YAML block scalar opened at `i` (`key: |`, `- >-`) ends: the last
+    /// of the lines after it that are blank or indented deeper than its key. Nil when `i` opens none.
+    private func endOfBlockScalar(at i: Int) -> Int? {
+        var j = i + 1
+        while j < count, units[j] == Self.plus || units[j] == Self.minus || Self.isDigit(units[j]) { j += 1 }
+        guard i > 0, units[i - 1] == Self.space || units[i - 1] == Self.tab,
+              [nil, Self.newline, Self.carriageReturn, Self.hash].contains(nextNonBlank(from: j)) else { return nil }
+        var start = i
+        while start > 0, units[start - 1] != Self.newline { start -= 1 }
+        // The key's column, past any `- `; a scalar that is the list item itself only has to pass its dash.
+        var key = start
+        while key < i, units[key] == Self.space || (units[key] == Self.minus && units[key + 1] == Self.space) { key += 1 }
+        let indent = key - start - (key == i ? 1 : 0)
+        var end: Int? = nil
+        var line = endOfLine(from: j)
+        while line < count {
+            var text = line + 1
+            while text < count, units[text] == Self.space { text += 1 }
+            let lineEnd = endOfLine(from: text)
+            if text < lineEnd, !(units[text] == Self.carriageReturn && text + 1 == lineEnd) {
+                guard text - line - 1 > indent else { break }
+                end = lineEnd
+            }
+            line = lineEnd
+        }
+        return end
+    }
+
     mutating func scanCode() -> [SyntaxToken] {
         let lineComments = language.lineComments.map { Array($0.utf16) }
         let block = language.blockComment.map { (Array($0.open.utf16), Array($0.close.utf16)) }
@@ -546,12 +706,19 @@ private struct CodeScanner {
         let raw = Set(language.rawStrings.map { Array($0.utf16) })
         var i = 0
         var atLineStart = true
+        // Where here-document or block-scalar text opened on this line ends. It is one string from
+        // the line break on, so that each of its lines, the first too, starts inside the token.
+        var textEnd: Int? = nil
         while i < count {
             let c = units[i]
-            if c == Self.newline { atLineStart = true; i += 1; continue }
+            if c == Self.newline {
+                if let end = textEnd.take(), end > i { add(i, end, .string); i = end; continue }
+                atLineStart = true; i += 1; continue
+            }
             if c == Self.space || c == Self.tab { i += 1; continue }
             let lineStart = atLineStart
             atLineStart = false
+            if language.backslashEscapes, c == Self.backslash, i + 1 < count, units[i + 1] != Self.newline { i += 2; continue }
             // YAML list items: `- key: value` still starts a key.
             if lineStart, language.keySeparator != nil, c == Self.minus, i + 1 < count, units[i + 1] == Self.space {
                 atLineStart = true; i += 1; continue
@@ -571,10 +738,15 @@ private struct CodeScanner {
                 add(i, end, .string); i = end; continue
             }
             if let delimiter = delimiters.first(where: { matches($0, at: i) }) {
+                let escapes = !raw.contains(delimiter) || (language.backslashEscapes && i > 0 && units[i - 1] == Self.dollar)
                 let end = min(count, endOfString(from: i + delimiter.count, closing: delimiter,
-                                                 spansLines: spanning.contains(delimiter), raw: raw.contains(delimiter)))
+                                                 spansLines: spanning.contains(delimiter), raw: !escapes))
                 add(i, end, language.keyedStrings && nextNonBlank(from: end) == Self.colon ? .property : .string)
                 i = end; continue
+            }
+            if let style = language.heredoc, c == Self.less, let opener = heredocOpener(at: i, style) {
+                textEnd = endOfHeredoc(from: endOfLine(from: textEnd ?? opener.end), word: opener.word, indented: opener.indented)
+                i = opener.end; continue
             }
             if language.hashDirectives, c == Self.hash, i + 1 < count, Self.isWordStart(units[i + 1]) {
                 let end = endOfWord(from: i + 1)
@@ -616,6 +788,9 @@ private struct CodeScanner {
             if Self.isWordStart(c) {
                 let end = endOfWord(from: i)
                 let word = String(decoding: units[i..<end], as: UTF16.self)
+                if language.rawStringPrefixes.contains(word), let close = endOfRawString(from: end) {
+                    add(i, close, .string); i = close; continue
+                }
                 let key = language.caseInsensitive ? word.lowercased() : word
                 let next: UInt16 = end < count ? units[end] : 0
                 // After a `.`, `get`, `default` and `match` are member names, not keywords (but `...rest` isn't a member).
@@ -631,6 +806,7 @@ private struct CodeScanner {
                 if let kind { add(i, end, kind) }
                 i = end; continue
             }
+            if language.blockScalars, c == Self.pipe || c == Self.greater, let end = endOfBlockScalar(at: i) { textEnd = end }
             i += 1
         }
         return tokens
