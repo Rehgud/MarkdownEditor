@@ -1,7 +1,7 @@
 import Foundation
 
 // Tokenizer checks, run from the project folder:
-//   swiftc Shared/Syntax.swift Checks/main.swift -o /tmp/syntax-check && /tmp/syntax-check
+//   swiftc Shared/Syntax.swift Shared/Render.swift Shared/FileFormats.swift Checks/Stubs.swift Checks/main.swift -o /tmp/checks && /tmp/checks
 
 var failures = 0
 
@@ -68,6 +68,22 @@ if escaped != "&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;" { failures += 1; pri
 let line = highlightedLines("let a = \"🦀\" // 한글", language: .named("swift"))
 let expectedLine = "<span class=\"tk-keyword\">let</span> a = <span class=\"tk-string\">&quot;🦀&quot;</span> <span class=\"tk-comment\">// 한글</span>"
 if line != [expectedLine] { failures += 1; print("✗ highlightedLines: \(line)") }
+
+// CSV: quoted line breaks and blank lines keep row numbers; VT and FF aren't line breaks.
+let csv = parseDelimited("a,b\n\"x\r\ny\",\"q\"\"\"\n\nlast", separator: ",")
+if csv.map(\.line) != [1, 2, 5] || csv.map(\.fields) != [["a", "b"], ["x\r\ny", "q\""], ["last"]] { failures += 1; print("✗ parseDelimited: \(csv)") }
+let vt = parseDelimited("a\u{0B}b\nc\u{0C}d\n\"x\u{0B}y\"\nz", separator: ",")
+if vt.map(\.line) != [1, 2, 3, 4] || vt.map(\.fields) != [["a\u{0B}b"], ["c\u{0C}d"], ["x\u{0B}y"], ["z"]] { failures += 1; print("✗ parseDelimited VT/FF: \(vt)") }
+// JSON status: ok, note (trailing comma, JSON5), error.
+let jsonCases: [(String, String)] = [
+    ("{\"a\": 1}", "ok"), ("{\"a\": 1,}", "note"), ("[1,2,]", "note"), ("{a: 'x'}", "note"), ("{\"a\": }", "error"),
+    ("{\"a\": \"x,}\"}", "ok"), ("[1, // c\n]", "note"),
+]
+for (text, want) in jsonCases {
+    guard case .body(let html, _) = renderPreview(text, as: FileFormat(url: URL(fileURLWithPath: "a.json"), declared: "json")), html.contains("code-status \(want)") else {
+        failures += 1; print("✗ json status \(text.debugDescription) expected \(want)"); continue
+    }
+}
 
 print(failures == 0 ? "All tokenizer checks passed." : "\(failures) tokenizer check(s) failed.")
 exit(failures == 0 ? 0 : 1)

@@ -641,16 +641,6 @@
         }
       }
     },
-    "주석이나 끝 쉼표가 있는 JSON (JSONC)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "JSON with comments or trailing commas (JSONC)"
-          }
-        }
-      }
-    },
     "중간 섹션 제목" : {
       "localizations" : {
         "en" : {
@@ -787,6 +777,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Table"
+          }
+        }
+      }
+    },
+    "표준 JSON이 아니에요 · JSONC·JSON5로는 읽혀요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not standard JSON · Readable as JSONC/JSON5"
           }
         }
       }

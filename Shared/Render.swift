@@ -44,16 +44,42 @@ private func jsonStatus(_ text: String, format: FileFormat) -> String {
     let data = Data(text.utf8)
     do {
         _ = try JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
+        // Foundation accepts a trailing comma even without .json5Allowed.
+        if hasTrailingComma(text) { return "<div class=\"code-status note\">\(String(localized: "표준 JSON이 아니에요 · JSONC·JSON5로는 읽혀요"))</div>" }
         return "<div class=\"code-status ok\">✓ \(String(localized: "올바른 JSON"))</div>"
     } catch {
         if (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed, .json5Allowed])) != nil {
-            return "<div class=\"code-status note\">\(String(localized: "주석이나 끝 쉼표가 있는 JSON (JSONC)"))</div>"
+            return "<div class=\"code-status note\">\(String(localized: "표준 JSON이 아니에요 · JSONC·JSON5로는 읽혀요"))</div>"
         }
         // Foundation's reason is English; the line it names is what's worth showing.
         let reason = (error as NSError).userInfo[NSDebugDescriptionErrorKey] as? String ?? error.localizedDescription
         let place = reason.firstMatch(of: #/line (\d+)/#).map { String(localized: "\(String($0.1))번째 줄 근처") } ?? String(localized: "읽을 수 없음")
         return "<div class=\"code-status error\" title=\"\(escapeHTML(reason))\">\(String(localized: "JSON 오류 · \(place)"))</div>"
     }
+}
+
+/// A `,` followed only by whitespace and comments, then `]` or `}`; strings and comments are skipped as tokens.
+func hasTrailingComma(_ text: String) -> Bool {
+    guard let language = CodeLanguage.named("json") else { return false }
+    let units = Array(text.utf16)
+    var tokens: [Int: (end: Int, comment: Bool)] = [:]
+    for token in tokenize(text, as: language) { tokens[token.range.location] = (NSMaxRange(token.range), token.kind == .comment) }
+    var comma = false, i = 0
+    while i < units.count {
+        if let token = tokens[i] {
+            if !token.comment { comma = false }
+            i = token.end
+            continue
+        }
+        switch units[i] {
+        case 44: comma = true
+        case 93, 125: if comma { return true }
+        case 32, 9, 10, 13: break
+        default: comma = false
+        }
+        i += 1
+    }
+    return false
 }
 
 /// The first row is the header. Rows keep the source line they start on, for scroll sync.
@@ -88,7 +114,7 @@ func parseDelimited(_ text: String, separator: Character) -> [(line: Int, fields
             if c == "\"" {
                 if i + 1 < characters.count, characters[i + 1] == "\"" { field.append("\""); i += 1 } else { quoted = false }
             } else {
-                if c.isNewline { line += 1 }
+                if c.isNewline, c != "\u{0B}", c != "\u{0C}" { line += 1 }
                 field.append(c)
             }
         } else if quoting, c == "\"", field.isEmpty {
@@ -97,7 +123,7 @@ func parseDelimited(_ text: String, separator: Character) -> [(line: Int, fields
         } else if c == separator {
             fields.append(field)
             field = ""
-        } else if c.isNewline {
+        } else if c.isNewline, c != "\u{0B}", c != "\u{0C}" {
             endRow()
             line += 1
             rowLine = line
