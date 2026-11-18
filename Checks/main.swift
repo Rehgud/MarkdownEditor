@@ -51,9 +51,10 @@ check("<p>a <한글> b</p>", "html", ["tag p", "tag p"])
 check("url: http://x/#frag # note", "yaml", ["property url", "comment # note"])
 check("a { color: red; } // don't", "scss", ["comment // don't"])
 check("background: url(http://x.com/a.png)", "scss", ["property background", "function url"])
-// Raw strings: Go backticks, SQL quotes.
+// Raw strings: Go backticks. SQL follows MySQL dumps instead: \' stays inside the string, since SQL
+// strings span lines and one misread quote would swallow the rest of the dump.
 check("s := `C:\\`; x := 1", "go", ["string `C:\\`", "number 1"])
-check("SELECT 'C:\\' FROM t -- x", "sql", ["keyword SELECT", "string 'C:\\'", "keyword FROM", "comment -- x"])
+check("VALUES ('O\\'Brien', 1);\nSELECT 2", "sql", ["keyword VALUES", "string 'O\\'Brien'", "number 1", "keyword SELECT", "number 2"])
 check("SELECT 'a\nb', \"c\nd\" FROM t", "sql", ["keyword SELECT", "string 'a\nb'", "string \"c\nd\"", "keyword FROM"])
 check("{\"a\": 1, \"b\": \"x\"}", "json", ["property \"a\"", "number 1", "property \"b\"", "string \"x\""])
 

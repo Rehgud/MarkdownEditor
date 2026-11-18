@@ -53,7 +53,7 @@ struct CodeLanguage: Sendable {
     /// Longest first where delimiters share a prefix (`"""` before `"`).
     var strings = ["\"", "'"]
     var multilineStrings: Set<String> = []
-    /// Delimiters whose backslashes are literal: shell and SQL `'…'`, Go's `` `…` ``.
+    /// Delimiters whose backslashes are literal: shell `'…'`, Go's `` `…` ``.
     var rawStrings: Set<String> = []
     /// What opens Rust's `r#"…"#` (lower case) and C++'s `R"x(…)x"` (upper case).
     var rawStringPrefixes: Set<String> = []
@@ -287,7 +287,9 @@ extension CodeLanguage {
             boolean blob json jsonb serial uuid
             """),
         lineComments: ["--"], blockComment: ("/*", "*/"),
-        strings: ["'", "\""], multilineStrings: ["'", "\""], rawStrings: ["'"],
+        // MySQL dumps write 'O\'Brien'; now that strings span lines, a literal backslash there would
+        // turn the rest of the dump into one string. Only a string ending in "\" pays for this.
+        strings: ["'", "\""], multilineStrings: ["'", "\""],
         caseInsensitive: true, capitalizedTypes: false)
 
     static let json = CodeLanguage(
