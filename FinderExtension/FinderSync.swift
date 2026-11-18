@@ -18,12 +18,12 @@ final class FinderSync: FIFinderSync {
         NSImage(systemSymbolName: "doc.badge.plus", accessibilityDescription: String(localized: "새 파일"))!
     }
 
-    /// The toolbar button lists the common formats, the rest under 더보기; a right-click, on a folder's
+    /// The toolbar button lists the common formats, the rest under 더 보기; a right-click, on a folder's
     /// background or on a file in it, has the same under 새로 만들기 as on Windows.
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         let formats = NSMenu()
         for format in FileFormat.common { formats.addItem(item(Self.title(for: format))) }
-        let more = NSMenuItem(title: String(localized: "더보기"), action: nil, keyEquivalent: "")
+        let more = NSMenuItem(title: String(localized: "더 보기"), action: nil, keyEquivalent: "")
         more.submenu = NSMenu()
         for format in FileFormat.more { more.submenu?.addItem(item(Self.title(for: format))) }
         formats.addItem(more)

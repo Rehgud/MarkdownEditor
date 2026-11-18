@@ -10,7 +10,7 @@ lang=auto
 if [[ "${1:-}" == --lang ]]; then
   lang="${2:-}"
 elif [[ -t 0 ]]; then
-  print "언어 / Language\n  1) Mac 설정을 따름 / Follow macOS (Enter)\n  2) 한국어\n  3) English"
+  print "언어 / Language\n  1) macOS 언어 따르기 / Follow macOS (Enter)\n  2) 한국어\n  3) English"
   read "choice?> "
   case "$choice" in 2) lang=ko ;; 3) lang=en ;; esac
 fi
@@ -34,7 +34,7 @@ if installed=$(defaults read "$app/Contents/Info" CFBundleIdentifier 2>/dev/null
 fi
 for _ in {1..50}; do pgrep -qf "$app/Contents/MacOS/" || break; sleep 0.2; done
 if pgrep -qf "$app/Contents/MacOS/"; then
-  echo "MarkdownEditor is still running (unsaved changes?). Quit it and rerun." >&2
+  echo "Markdown Editor is still running (unsaved changes?). Quit it and rerun." >&2
   exit 1
 fi
 built="$PWD/.build/dd/Build/Products/Release/MarkdownEditor.app"
@@ -51,4 +51,4 @@ rm -rf "$built"
 for ext in "$app"/Contents/PlugIns/*.appex; do pluginkit -a "$ext"; done
 pluginkit -e use -i "$(defaults read "$app/Contents/PlugIns/NewMarkdownFinder.appex/Contents/Info" CFBundleIdentifier)"
 qlmanage -r >/dev/null 2>&1
-echo "Installed $app (language: ${lang:-follows macOS})"
+echo "Installed $app (language: ${lang:-auto, follows macOS})"

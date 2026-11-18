@@ -56,7 +56,7 @@ struct FileFormat: Hashable, Identifiable, Sendable {
     static let markdown = FileFormat(name: "Markdown", extensions: ["md", "markdown", "mdown"], language: nil, preview: .markdown)
     static let text = FileFormat(name: String(localized: "텍스트"), extensions: ["txt", "text", "log"], language: nil, preview: .text)
 
-    /// What people and developers make most, first in the 새 파일 menus; the rest are under 더보기.
+    /// What people and developers make most, first in the 새 파일 menus; the rest are under 더 보기.
     static let common = [markdown] + creatable.prefix(8)
     static let more = Array(creatable.dropFirst(8))
 

@@ -21,7 +21,7 @@ struct SlashCommand: Identifiable {
     /// Notion's basic, inline and advanced blocks that have a Markdown form, in Notion's order.
     static let all: [SlashCommand] = [
         .init(title: String(localized: "텍스트"), hint: String(localized: "일반 문단으로"), symbol: "textformat", keywords: "text plain paragraph", action: .block("")),
-        .init(title: String(localized: "페이지"), hint: String(localized: "새 문서를 만들고 링크"), symbol: "doc.badge.plus", keywords: "page subpage new", action: .page),
+        .init(title: String(localized: "페이지"), hint: String(localized: "새 문서를 만들어 링크 걸기"), symbol: "doc.badge.plus", keywords: "page subpage new", action: .page),
         .init(title: String(localized: "할 일 목록"), hint: String(localized: "체크박스로 할 일 관리"), symbol: "checklist", keywords: "todo task checkbox", action: .block("- [ ] ")),
         .init(title: String(localized: "제목 1"), hint: String(localized: "큰 섹션 제목"), symbol: "textformat.size.larger", keywords: "# h1 heading title", action: .block("# ")),
         .init(title: String(localized: "제목 2"), hint: String(localized: "중간 섹션 제목"), symbol: "textformat.size", keywords: "## h2 heading", action: .block("## ")),
@@ -43,9 +43,9 @@ struct SlashCommand: Identifiable {
         .init(title: String(localized: "링크"), hint: String(localized: "웹 링크·북마크"), symbol: "link", keywords: "link url web book bookmark", action: .insert("[", "](https://)")),
         .init(title: String(localized: "목차"), hint: String(localized: "제목으로 만든 목차"), symbol: "list.bullet.indent", keywords: "toc table of contents outline", action: .toc),
         .init(title: String(localized: "날짜"), hint: String(localized: "오늘 날짜"), symbol: "calendar", keywords: "date today reminder", action: .date),
-        .init(title: String(localized: "이모지"), hint: String(localized: "이모지 선택창"), symbol: "face.smiling", keywords: "emoji", action: .emoji),
+        .init(title: String(localized: "이모지"), hint: String(localized: "이모지 선택 창"), symbol: "face.smiling", keywords: "emoji", action: .emoji),
         .init(title: String(localized: "각주"), hint: String(localized: "문서 끝에 붙는 메모"), symbol: "number", keywords: "footnote", action: .insert("[^", "]")),
-        .init(title: String(localized: "복제"), hint: String(localized: "이 줄을 아래에 복사"), symbol: "plus.square.on.square", keywords: "duplicate dup copy", action: .duplicate),
+        .init(title: String(localized: "복제"), hint: String(localized: "이 줄을 아래에 복제"), symbol: "plus.square.on.square", keywords: "duplicate dup copy", action: .duplicate),
         .init(title: String(localized: "삭제"), hint: String(localized: "이 줄 지우기"), symbol: "trash", keywords: "delete del remove", action: .delete),
     ]
 

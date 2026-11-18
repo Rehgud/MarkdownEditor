@@ -18,10 +18,10 @@
 
 - **Markdown with a live preview.** Edit plain text on the left and see headings, to-do lists, tables and quotes rendered on the right. Switch between Edit, Split and Preview with ⌘1, ⌘2 and ⌘3.
 - **Slash commands.** Type `/` to insert a heading, to-do list, table, toggle, callout, code block, table of contents, date or a link to a new page.
-- **Code files with a code-editor preview.** Python, JavaScript, TypeScript, Go, Rust, Swift, Java, C, C++, shell, SQL, YAML and more open with syntax colors and line numbers. Click a line number to add a comment in that language's syntax.
-- **Data files.** CSV and TSV open as tables. JSON says whether it parses, and points at the line when it doesn't.
+- **Code files with a code-editor preview.** Python, JavaScript, TypeScript, Go, Rust, Swift, Java, C, C++, shell, SQL, YAML and more open with syntax highlighting and line numbers. Click a line number to add a comment in that language's syntax.
+- **Data files.** CSV and TSV open as tables. JSON shows whether it's valid, and points to the line when it isn't.
 - **Finder integration.** Right-click in a folder and choose **New** to create a Markdown, text or code file and name it right away. Quick Look previews Markdown files.
-- **Keeps your encoding.** UTF-8 (with or without BOM), UTF-16 and CP949 files are saved back the way they came.
+- **Keeps your encoding.** UTF-8 (with or without BOM), UTF-16 and CP949 files are saved in their original encoding.
 - **Korean and English.** Choose the language when you install, or let it follow macOS.
 
 ## Requirements
@@ -38,7 +38,7 @@ cd MarkdownEditor
 ./install.sh
 ```
 
-The script asks which language to use, builds a Release copy, installs it to `/Applications` and registers the Finder and Quick Look extensions. To skip the question, pass the language:
+The script asks which language to use, builds the app, installs it to `/Applications` and registers the Finder and Quick Look extensions. To skip the question, pass the language:
 
 ```bash
 ./install.sh --lang en     # English everywhere
@@ -88,7 +88,7 @@ To add a language, add it to `Shared/Localizable.xcstrings` and the three `InfoP
 ## Known limitations
 
 - An HTML file with a comment or an XML declaration before `<!doctype html>` can preview in quirks mode.
-- Java `\u` escapes inside comments aren't recognized by the syntax colorer.
+- Java `\u` escapes inside comments aren't recognized by the syntax highlighter.
 
 ## License
 

@@ -111,7 +111,7 @@
         }
       }
     },
-    "더보기" : {
+    "더 보기" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -261,12 +261,12 @@
         }
       }
     },
-    "새 문서를 만들고 링크" : {
+    "새 문서를 만들어 링크 걸기" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Create a new document and link it"
+            "value" : "Create a new document and link to it"
           }
         }
       }
@@ -391,12 +391,12 @@
         }
       }
     },
-    "이 줄을 아래에 복사" : {
+    "이 줄을 아래에 복제" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Copy this line below"
+            "value" : "Duplicate this line below"
           }
         }
       }
@@ -451,7 +451,7 @@
         }
       }
     },
-    "이모지 선택창" : {
+    "이모지 선택 창" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -506,7 +506,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Plain paragraph"
+            "value" : "Turn into a plain paragraph"
           }
         }
       }
@@ -591,22 +591,22 @@
         }
       }
     },
+    "주석 입력 후 Return · 취소는 Esc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type a comment and press Return · Esc to cancel"
+          }
+        }
+      }
+    },
     "주석 추가" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add Comment"
-          }
-        }
-      }
-    },
-    "주석을 쓰고 Return · 취소는 Esc" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Write a comment, then Return · Esc cancels"
           }
         }
       }
@@ -756,7 +756,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "To-do List"
+            "value" : "To-Do List"
           }
         }
       }

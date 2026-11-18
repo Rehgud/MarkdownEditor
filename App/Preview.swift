@@ -235,7 +235,7 @@ struct Preview: NSViewRepresentable {
         body.querySelector('.comment-draft')?.remove();
         const draft = make('form'), input = make('input'), add = make('button');
         draft.className = 'comment-draft';
-        input.placeholder = \(js(String(localized: "주석을 쓰고 Return · 취소는 Esc")));
+        input.placeholder = \(js(String(localized: "주석 입력 후 Return · 취소는 Esc")));
         add.textContent = \(js(String(localized: "추가")));
         draft.append(input, add);
         line.before(draft);

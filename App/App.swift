@@ -255,7 +255,7 @@ struct FormatMenu: View {
             // The choice covers every file of this kind, so the menu names the kind.
             Section("모든 \(fileURL.pathExtension.isEmpty ? fileURL.lastPathComponent : "." + fileURL.pathExtension) 파일의 형식") {
                 ForEach(FileFormat.common) { option(for: $0) }
-                Menu("더보기") {
+                Menu("더 보기") {
                     ForEach(FileFormat.all.filter { !FileFormat.common.contains($0) }) { option(for: $0) }
                 }
             }
@@ -334,7 +334,7 @@ struct NewFileCommands: Commands {
                 ForEach(FileFormat.common) { format in
                     Button("\(format.name) (.\(format.fileExtension))") { NewFile.createWithPanel(suggesting: format) }
                 }
-                Menu("더보기") {
+                Menu("더 보기") {
                     ForEach(FileFormat.more) { format in
                         Button("\(format.name) (.\(format.fileExtension))") { NewFile.createWithPanel(suggesting: format) }
                     }
