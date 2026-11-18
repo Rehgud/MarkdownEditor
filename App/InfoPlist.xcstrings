@@ -1,0 +1,46 @@
+{
+  "sourceLanguage" : "ko",
+  "strings" : {
+    "Markdown 문서" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markdown Document"
+          }
+        }
+      }
+    },
+    "코드" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code"
+          }
+        }
+      }
+    },
+    "텍스트·코드" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text and Code"
+          }
+        }
+      }
+    },
+    "파일" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

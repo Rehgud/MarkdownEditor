@@ -1,0 +1,16 @@
+{
+  "sourceLanguage" : "ko",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markdown Editor New File"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

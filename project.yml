@@ -1,0 +1,135 @@
+name: MarkdownEditor
+options:
+  bundleIdPrefix: io.github.rehgud
+  developmentLanguage: ko
+  deploymentTarget:
+    macOS: "27.0"
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # `xcodebuild BUNDLE_ID_SUFFIX=.dev` builds a copy that runs beside the installed app.
+    BUNDLE_ID_SUFFIX: ""
+    # ko or en locks the app to that language (Scripts/lock-language.sh); empty follows the Mac.
+    APP_LANGUAGE: ""
+    SWIFT_EMIT_LOC_STRINGS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+packages:
+  cmark:
+    url: https://github.com/swiftlang/swift-cmark
+    from: 0.9.0
+targets:
+  MarkdownEditor:
+    type: application
+    platform: macOS
+    scheme: {}
+    sources: [App, Shared]
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: io.github.rehgud.MarkdownEditor$(BUNDLE_ID_SUFFIX)
+    dependencies:
+      - package: cmark
+        product: cmark-gfm
+      - package: cmark
+        product: cmark-gfm-extensions
+      - target: NewMarkdownFinder
+      - target: MarkdownQuickLook
+    postBuildScripts:
+      - name: Lock language
+        script: '"$SRCROOT/Scripts/lock-language.sh"'
+        # Info.plist is processed outside the phase order; naming it makes the script wait for it.
+        inputFiles: [$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)]
+        basedOnDependencyAnalysis: false
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Markdown Editor
+        # AppKit's own menus (파일, 편집, 실행 취소…) follow the same choice as the app's strings.
+        CFBundleLocalizations: [ko, en]
+        LSApplicationCategoryType: public.app-category.productivity
+        # The type names are what Finder's 종류 column shows for files this app opens.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Markdown 문서
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Default
+            LSItemContentTypes: [net.daringfireball.markdown]
+          # Offered in "Open With" for text and code, never made the default for them.
+          - CFBundleTypeName: 텍스트·코드
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.plain-text, public.source-code, public.html, public.css, public.json, public.xml,
+                                 public.yaml, public.toml, public.comma-separated-values-text, public.tab-separated-values-text,
+                                 com.microsoft.typescript]
+          # Extensions macOS has no text type for (and .ts, which it calls video), claimed by extension so
+          # "Open With" offers this app. Only these: VS Code claims extensions without a rank, so even an
+          # Alternate claim ties with it and macOS makes the newer app the default. .ts/.go/.rs were asked
+          # for; the rest had no default app at all. Declaring types or claiming video types was worse.
+          - CFBundleTypeName: 코드
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            CFBundleTypeExtensions: [ts, go, rs, kt, kts, cts, pyw, jsonc, tab]
+          # Any other file this app is asked to open: never offered.
+          - CFBundleTypeName: 파일
+            CFBundleTypeRole: Editor
+            LSHandlerRank: None
+            LSItemContentTypes: [public.data]
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.rehgud.MarkdownEditor
+            CFBundleURLSchemes: [markdowneditor]
+  NewMarkdownFinder:
+    type: app-extension
+    platform: macOS
+    sources: [FinderExtension, Shared/FileFormats.swift, Shared/Localizable.xcstrings]
+    postBuildScripts:
+      - name: Lock language
+        script: '"$SRCROOT/Scripts/lock-language.sh"'
+        # Info.plist is processed outside the phase order; naming it makes the script wait for it.
+        inputFiles: [$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)]
+        basedOnDependencyAnalysis: false
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: io.github.rehgud.MarkdownEditor$(BUNDLE_ID_SUFFIX).NewMarkdownFinder
+    info:
+      path: FinderExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Markdown Editor 새 파일
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.FinderSync
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).FinderSync
+    entitlements:
+      path: FinderExtension/FinderExtension.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+  MarkdownQuickLook:
+    type: app-extension
+    platform: macOS
+    sources: [QuickLook, Shared]
+    postBuildScripts:
+      - name: Lock language
+        script: '"$SRCROOT/Scripts/lock-language.sh"'
+        # Info.plist is processed outside the phase order; naming it makes the script wait for it.
+        inputFiles: [$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)]
+        basedOnDependencyAnalysis: false
+    dependencies:
+      - package: cmark
+        product: cmark-gfm
+      - package: cmark
+        product: cmark-gfm-extensions
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: io.github.rehgud.MarkdownEditor$(BUNDLE_ID_SUFFIX).QuickLook
+    info:
+      path: QuickLook/Info.plist
+      properties:
+        CFBundleDisplayName: 마크다운 미리보기
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.quicklook.preview
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PreviewProvider
+          NSExtensionAttributes:
+            QLIsDataBasedPreview: true
+            QLSupportsSearchableItems: false
+            QLSupportedContentTypes: [net.daringfireball.markdown]
+    entitlements:
+      path: QuickLook/QuickLook.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
