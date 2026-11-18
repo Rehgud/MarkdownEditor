@@ -17,7 +17,7 @@ struct Preview: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
-        configuration.setURLSchemeHandler(LocalAssets(), forURLScheme: LocalAssets.scheme)
+        configuration.setURLSchemeHandler(context.coordinator.assets, forURLScheme: LocalAssets.scheme)
         let scripts = configuration.userContentController
         scripts.add(context.coordinator, contentWorld: .defaultClient, name: "previewScroll")
         scripts.add(context.coordinator, contentWorld: .defaultClient, name: "previewComment")
@@ -39,10 +39,20 @@ struct Preview: NSViewRepresentable {
         coordinator.commentable = format.preview == .code && format.language.flatMap { commentLine("", language: $0) } != nil
         // A divider drag or mode switch updates the view with nothing new to show; rendering a large
         // file again each time made the divider lag.
-        guard coordinator.rendered?.text != text || coordinator.rendered?.format != format
-                || coordinator.rendered?.folder != folder else { return }
+        let last = coordinator.rendered
+        guard last?.text != text || last?.format != format || last?.folder != folder else { return }
         coordinator.rendered = (text, format, folder)
-        coordinator.show(renderPreview(text, as: format), folder: folder)
+        coordinator.pending?.cancel()
+        // Typing renders once it pauses: a large file took half a second a keystroke. The first render
+        // and a new format or folder show at once.
+        guard let last, last.format == format, last.folder == folder else {
+            return coordinator.show(renderPreview(text, as: format), folder: folder)
+        }
+        let work = DispatchWorkItem { [text, format, folder] in
+            MainActor.assumeIsolated { coordinator.show(renderPreview(text, as: format), folder: folder) }
+        }
+        coordinator.pending = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(sync: sync) }
@@ -54,8 +64,14 @@ struct Preview: NSViewRepresentable {
         var comment: (@MainActor (Int, String) -> Void)?
         var commentable = false
         var rendered: (text: String, format: FileFormat, folder: URL?)?
+        /// A render waiting for typing to pause.
+        var pending: DispatchWorkItem?
+        let assets = LocalAssets()
         private var content: PreviewContent?
-        private var folder: URL?
+        private var folder: URL? {
+            // `../assets/…` beside the document's folder loads; nothing else on disk does.
+            didSet { assets.root = folder?.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath() }
+        }
         private var loaded = false
         /// The web view holds the user's own HTML page rather than the app's styled one.
         private var showingPage = false
@@ -67,13 +83,14 @@ struct Preview: NSViewRepresentable {
         func show(_ content: PreviewContent, folder: URL?) {
             guard content != self.content || folder != self.folder else { return }
             (webView as? FindingWebView)?.forgetTyping() // the update replaces any open comment box
-            let firstShow = self.content == nil
+            let firstShow = self.content == nil, moved = folder != self.folder
             self.content = content
             self.folder = folder
             switch content {
             case .page(let html):
-                if showingPage, loaded {
-                    run("document.documentElement.innerHTML = \(jsLiteral(Self.documentContents(html)))")
+                // A page that moved (Move To, Save As) reloads, so its relative links resolve from there.
+                if showingPage, loaded, !moved {
+                    run("document.documentElement.innerHTML = \(Preview.js(Self.documentContents(html)))")
                 } else {
                     load(Self.withPolicy(html), page: true)
                 }
@@ -109,7 +126,7 @@ struct Preview: NSViewRepresentable {
         private func push() {
             guard case .body(let html, let style)? = content else { return }
             let base = folder.flatMap(LocalAssets.url(for:))?.absoluteString ?? ""
-            run("window.__mdShow(\(jsLiteral(html)), \(jsLiteral(style)), \(jsLiteral(base)))")
+            run("window.__mdShow(\(Preview.js(html)), \(Preview.js(style)), \(Preview.js(base)))")
             sync.alignPreview()
         }
 
@@ -130,10 +147,6 @@ struct Preview: NSViewRepresentable {
             webView?.evaluateJavaScript(script + "; 0", in: nil, in: .defaultClient) { result in
                 if case .failure(let error) = result { NSLog("preview script failed: %@", String(describing: error)) }
             }
-        }
-
-        private func jsLiteral(_ string: String) -> String {
-            String(decoding: try! JSONEncoder().encode(string), as: UTF8.self)
         }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -176,7 +189,7 @@ struct Preview: NSViewRepresentable {
             let path = url.path(percentEncoded: false)
             if path == (folder ?? URL(filePath: "/")).path(percentEncoded: false),
                let fragment = url.fragment(percentEncoded: false) {
-                run("document.getElementById(\(jsLiteral(fragment)))?.scrollIntoView({ behavior: 'smooth' })")
+                run("document.getElementById(\(Preview.js(fragment)))?.scrollIntoView({ behavior: 'smooth' })")
             } else if folder != nil {
                 let file = URL(filePath: path)
                 if FileFormat.all.contains(where: { $0.extensions.contains(file.pathExtension.lowercased()) }) {
@@ -188,7 +201,7 @@ struct Preview: NSViewRepresentable {
         }
     }
 
-    /// A string as a JavaScript literal, for the page script's translated text.
+    /// A string as a JavaScript literal.
     private static func js(_ text: String) -> String { String(decoding: try! JSONEncoder().encode(text), as: UTF8.self) }
 
     /// Maps between source lines and scroll offsets through the blocks' data-sourcepos lines,
@@ -200,8 +213,15 @@ struct Preview: NSViewRepresentable {
       // Elements have no such named lookups, so everything below goes through body and root.
       const body = document.body, root = document.documentElement, base = document.querySelector('base');
       const make = Document.prototype.createElement.bind(document);
-      window.__mdShow = (html, style, href) => { base.href = href; body.className = style; body.innerHTML = html; };
+      // Measured once per layout: measuring every block on each scroll event took 15 ms at 40,000 lines.
+      // An image's load neither bubbles nor reaches the window, so the root catches it on the way down.
+      let measured = null;
+      const forget = () => { measured = null; };
+      addEventListener('resize', forget);
+      for (const type of ['load', 'toggle']) root.addEventListener(type, forget, true);
+      window.__mdShow = (html, style, href) => { base.href = href; body.className = style; body.innerHTML = html; forget(); };
       const points = () => {
+        if (measured) return measured;
         const pts = [[0, 0]];
         let end = 0;
         for (const el of body.querySelectorAll('[data-sourcepos]')) {
@@ -214,7 +234,7 @@ struct Preview: NSViewRepresentable {
         const bottom = root.scrollHeight - innerHeight;
         const [lastLine, lastTop] = pts[pts.length - 1];
         if (end > lastLine && bottom > lastTop) pts.push([end, bottom]);
-        return pts;
+        return measured = pts;
       };
       const map = (from, to, value) => {
         const pts = points();
@@ -239,10 +259,12 @@ struct Preview: NSViewRepresentable {
         add.textContent = \(js(String(localized: "추가")));
         draft.append(input, add);
         line.before(draft);
+        forget();
         input.focus();
         const close = message => {
           webkit.messageHandlers.previewComment.postMessage(message);
           draft.remove();
+          forget();
         };
         draft.addEventListener('submit', event => {
           event.preventDefault();
@@ -295,6 +317,9 @@ private final class FindingWebView: WKWebView {
 /// preview. With scripts off, what it shows stays on screen.
 final class LocalAssets: NSObject, WKURLSchemeHandler {
     static let scheme = "md-local"
+    /// The folder files load from, symlinks resolved; nil (an untitled document) loads none. Anything
+    /// outside is refused, or a page could tell which files exist elsewhere by which images load.
+    var root: URL?
 
     /// file:///a/b/ becomes md-local:///a/b/, keeping the trailing slash relative URLs resolve against.
     static func url(for fileURL: URL) -> URL? {
@@ -305,8 +330,9 @@ final class LocalAssets: NSObject, WKURLSchemeHandler {
 
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
         // Type-check the symlink's target, or `leak.png -> ~/.ssh/id_ed25519` would pass as an image.
-        guard let url = task.request.url,
-              case let file = URL(filePath: url.path(percentEncoded: false)).resolvingSymlinksInPath(),
+        guard let url = task.request.url, let root,
+              case let file = URL(filePath: url.path(percentEncoded: false)).standardizedFileURL.resolvingSymlinksInPath(),
+              file.pathComponents.starts(with: root.pathComponents),
               let mimeType = Self.mimeType(of: file),
               let data = try? Data(contentsOf: file)
         else { return task.didFailWithError(URLError(.fileDoesNotExist)) }

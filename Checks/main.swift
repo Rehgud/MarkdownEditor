@@ -69,5 +69,23 @@ let line = highlightedLines("let a = \"🦀\" // 한글", language: .named("swif
 let expectedLine = "<span class=\"tk-keyword\">let</span> a = <span class=\"tk-string\">&quot;🦀&quot;</span> <span class=\"tk-comment\">// 한글</span>"
 if line != [expectedLine] { failures += 1; print("✗ highlightedLines: \(line)") }
 
+// Text files open in the encoding they came in and save back byte for byte, as TextDocument saves.
+let encoded: [(String, Data, String.Encoding)] = [
+    ("UTF-8", Data("# 제목\n".utf8), .utf8),
+    ("UTF-8 BOM", byteOrderMarks[0].bom + Data("# 제목\n".utf8), .utf8),
+    ("UTF-16LE", byteOrderMarks[1].bom + "# 제목\n".data(using: .utf16LittleEndian)!, .utf16LittleEndian),
+    ("UTF-16BE", byteOrderMarks[2].bom + "# 제목\n".data(using: .utf16BigEndian)!, .utf16BigEndian),
+    ("CP949", "# 제목\n".data(using: cp949)!, cp949),
+]
+for (name, data, encoding) in encoded {
+    guard let decoded = decodeText(data), decoded.text == "# 제목\n", decoded.encoding == encoding,
+          decoded.bom + decoded.text.data(using: decoded.encoding)! == data
+    else { failures += 1; print("✗ decodeText \(name): \(String(describing: decodeText(data)))"); continue }
+}
+// Ones that would lose a byte on save: an odd-length UTF-16 file, a second UTF-8 mark (decoding drops it).
+for data in [Data([0xFF, 0xFE, 0x41, 0x00, 0x42]), Data([0xEF, 0xBB, 0xBF, 0xEF, 0xBB, 0xBF, 0x41])] where decodeText(data) != nil {
+    failures += 1; print("✗ decodeText should refuse \(Array(data))")
+}
+
 print(failures == 0 ? "All tokenizer checks passed." : "\(failures) tokenizer check(s) failed.")
 exit(failures == 0 ? 0 : 1)
