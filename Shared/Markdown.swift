@@ -19,19 +19,27 @@ private func anchorHeadings(in html: String) -> (html: String, headings: [Markdo
     // Setext headings can span lines.
     let tag = try! NSRegularExpression(pattern: "<h([1-6])([^>]*)>(.*?)</h\\1>", options: .dotMatchesLineSeparators)
     let source = html as NSString
-    var output = "", headings: [MarkdownHeading] = [], seen: [String: Int] = [:], copied = 0
+    var output = "", headings: [MarkdownHeading] = [], used = Set<String>(), seen: [String: Int] = [:], copied = 0
     for match in tag.matches(in: html, range: NSRange(location: 0, length: source.length)) {
         let level = Int(source.substring(with: match.range(at: 1)))!
+        // A raw `<h2 id="…">` keeps its own id.
+        let rawID = source.substring(with: match.range(at: 2)).firstMatch(of: #/\sid\s*=\s*"([^"]*)"/#)?.1
         let inner = source.substring(with: match.range(at: 3))
         let title = unescapeHTML(inner.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression))
         let slug = String(title.lowercased().compactMap { $0 == " " ? "-" : ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") ? $0 : nil })
         let base = slug.isEmpty ? "heading" : slug
-        let repeats = seen[base, default: 0]
-        seen[base] = repeats + 1
-        let id = repeats == 0 ? base : "\(base)-\(repeats)"
+        var repeats = seen[base, default: 0]
+        var id = repeats == 0 ? base : "\(base)-\(repeats)"
+        while used.contains(id) {
+            repeats += 1
+            id = "\(base)-\(repeats)"
+        }
+        if let rawID { id = String(rawID) } else { seen[base] = repeats + 1 }
+        used.insert(id)
         headings.append(MarkdownHeading(level: level, id: id, title: title))
         output += source.substring(with: NSRange(location: copied, length: match.range.location - copied))
-        output += "<h\(level) id=\"\(id)\"\(source.substring(with: match.range(at: 2)))>\(inner)</h\(level)>"
+        output += rawID != nil ? source.substring(with: match.range)
+            : "<h\(level) id=\"\(id)\"\(source.substring(with: match.range(at: 2)))>\(inner)</h\(level)>"
         copied = NSMaxRange(match.range)
     }
     return (output + source.substring(from: copied), headings)

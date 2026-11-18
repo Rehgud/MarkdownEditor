@@ -80,7 +80,7 @@ open MarkdownEditor.xcodeproj
 Run the checks with:
 
 ```bash
-swiftc Shared/Syntax.swift Checks/main.swift -o /tmp/checks && /tmp/checks
+swiftc Shared/Syntax.swift Shared/Render.swift Shared/FileFormats.swift Checks/Stubs.swift Checks/main.swift -o /tmp/checks && /tmp/checks
 ```
 
 To add a language, add it to `Shared/Localizable.xcstrings` and the three `InfoPlist.xcstrings` files in Xcode, then add it to `CFBundleLocalizations` in `project.yml`.

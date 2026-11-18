@@ -81,7 +81,7 @@ open MarkdownEditor.xcodeproj
 검사는 이렇게 돌려요.
 
 ```bash
-swiftc Shared/Syntax.swift Checks/main.swift -o /tmp/checks && /tmp/checks
+swiftc Shared/Syntax.swift Shared/Render.swift Shared/FileFormats.swift Checks/Stubs.swift Checks/main.swift -o /tmp/checks && /tmp/checks
 ```
 
 언어를 추가하려면 Xcode에서 `Shared/Localizable.xcstrings`와 세 개의 `InfoPlist.xcstrings`에 번역을 넣고, `project.yml`의 `CFBundleLocalizations`에 그 언어를 추가하세요.
