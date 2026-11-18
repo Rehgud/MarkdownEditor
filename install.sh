@@ -39,8 +39,12 @@ if pgrep -qf "$app/Contents/MacOS/"; then
 fi
 built="$PWD/.build/dd/Build/Products/Release/MarkdownEditor.app"
 lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-for ext in "$app"/Contents/PlugIns/*.appex(N); do pluginkit -r "$ext" 2>/dev/null || true; done
-[[ -d "$app" ]] && "$lsregister" -u "$app" 2>/dev/null || true
+# A copy installed under another ID keeps its extensions registered, and Finder keeps asking them.
+# Same ID: leave them, since removing and re-adding one path races and can drop the new registration.
+if [[ -n "${installed:-}" && "$installed" != "$(defaults read "$built/Contents/Info" CFBundleIdentifier)" ]]; then
+  for ext in "$app"/Contents/PlugIns/*.appex(N); do pluginkit -r "$ext" 2>/dev/null || true; done
+  "$lsregister" -u "$app" 2>/dev/null || true
+fi
 rm -rf "$app"
 ditto "$built" "$app"
 # Xcode registers the build product too; drop it so Open With and Finder see one app.

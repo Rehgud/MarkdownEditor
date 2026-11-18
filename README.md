@@ -20,7 +20,7 @@
 - **Slash commands.** Type `/` to insert a heading, to-do list, table, toggle, callout, code block, table of contents, date or a link to a new page.
 - **Code files with a code-editor preview.** Python, JavaScript, TypeScript, Go, Rust, Swift, Java, C, C++, shell, SQL, YAML and more open with syntax highlighting and line numbers. Click a line number to add a comment in that language's syntax.
 - **Data files.** CSV and TSV open as tables. JSON shows whether it's valid, and points to the line when it isn't.
-- **Finder integration.** Right-click in a folder and choose **New** to create a Markdown, text or code file and name it right away. Quick Look previews Markdown files.
+- **Finder integration.** Right-click in a folder, or use the toolbar button, and choose **New** to create a folder or a Markdown, text or code file and name it right away. Quick Look previews Markdown files.
 - **Keeps your encoding.** UTF-8 (with or without BOM), UTF-16 and CP949 files are saved in their original encoding.
 - **Korean and English.** Choose the language when you install, or let it follow macOS.
 

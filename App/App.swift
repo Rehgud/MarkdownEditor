@@ -362,8 +362,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// From the Finder extension: `markdowneditor://new?dir=/path&ext=py` makes a Python file there,
-    /// `&ask=1` one of any kind. Either way the name prompt shows where and waits for the user, so no
-    /// link (from Finder or a web page) creates a file on its own.
+    /// `&ask=1` one of any kind, `&folder=1` a folder. Every time the name prompt shows where and waits
+    /// for the user, so no link (from Finder or a web page) creates anything on its own.
     @objc private func handleGetURL(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         guard let string = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
               let components = URLComponents(string: string), components.host == "new",
@@ -371,6 +371,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               case let folder = URL(filePath: dir, directoryHint: .isDirectory),
               (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         else { return }
+        if components.queryItems?.contains(where: { $0.name == "folder" }) == true {
+            if let made = NewFile.createFolder(in: folder) { NSWorkspace.shared.activateFileViewerSelecting([made]) }
+            return
+        }
         let ask = components.queryItems?.contains { $0.name == "ask" } == true
         let ext = components.queryItems?.first { $0.name == "ext" }?.value ?? "md"
         let format = ask ? nil : FileFormat.all.first { $0.extensions.contains(ext.lowercased()) } ?? .markdown
@@ -389,34 +393,23 @@ enum NewFile {
         var name = firstFreeName(in: folder, for: format ?? .text)
         var problem = ""
         while true {
-            let alert = NSAlert()
-            alert.messageText = format.map { String(localized: "새 \($0.name) 파일") } ?? String(localized: "새 파일")
-            alert.informativeText = problem + String(localized: "위치: \(place(folder))")
-                + (format == nil ? "\n" + String(localized: "확장자까지 입력하세요.\n예: main.go, notes.txt, .env") : "")
-            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
-            field.stringValue = name
-            field.usesSingleLineMode = true // a pasted line break becomes a space
-            alert.accessoryView = field
-            alert.addButton(withTitle: String(localized: "만들기"))
-            alert.addButton(withTitle: String(localized: "취소"))
-            alert.window.initialFirstResponder = field
             // A format's prompt selects the name before the extension; "any kind" selects all of it,
             // since the extension is the user's to type.
             let selected = format == nil ? name.utf16.count : (name as NSString).deletingPathExtension.utf16.count
-            DispatchQueue.main.async { field.currentEditor()?.selectedRange = NSRange(location: 0, length: selected) }
-            guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-
-            name = field.stringValue.trimmingCharacters(in: .whitespaces)
+            guard let typed = askName(
+                title: format.map { String(localized: "새 \($0.name) 파일") } ?? String(localized: "새 파일"),
+                note: problem + String(localized: "위치: \(place(folder))")
+                    + (format == nil ? "\n" + String(localized: "확장자까지 입력하세요.\n예: main.go, notes.txt, .env") : ""),
+                name: name, selecting: selected)
+            else { return nil }
+            name = typed
             // A format's own extension goes on unless the name already ends in one: "회의록 v1.2" and
             // "2024.11.17" end in numbers, not extensions.
             if let format, !name.isEmpty, !name.hasPrefix("."), !Self.endsInExtension(name) {
                 name += "." + format.fileExtension
             }
-            guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains(":"),
-                  !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.union(.newlines).contains),
-                  // A format's prompt makes visible files: an emptied name leaves just ".md".
-                  format == nil || !name.hasPrefix(".")
-            else {
+            // A format's prompt makes visible files: an emptied name leaves just ".md".
+            guard isUsable(name), format == nil || !name.hasPrefix(".") else {
                 problem = String(localized: "이 이름은 쓸 수 없어요.") + "\n"
                 continue
             }
@@ -431,6 +424,62 @@ enum NewFile {
                 return nil
             }
         }
+    }
+
+    /// Asks for a new folder's name, Finder's 무제 폴더 (무제 폴더 2, …) filled in and selected, and makes
+    /// the folder (never over an existing item). Nil if cancelled.
+    static func createFolder(in folder: URL) -> URL? {
+        NSApp.activate()
+        let untitled = String(localized: "무제 폴더")
+        var name = untitled, n = 1
+        while FileManager.default.fileExists(atPath: folder.appending(path: name).path(percentEncoded: false)) {
+            n += 1
+            name = "\(untitled) \(n)"
+        }
+        var problem = ""
+        while true {
+            guard let typed = askName(title: String(localized: "새 폴더"), note: problem + String(localized: "위치: \(place(folder))"),
+                                      name: name, selecting: name.utf16.count)
+            else { return nil }
+            name = typed
+            guard isUsable(name) else {
+                problem = String(localized: "이 이름은 쓸 수 없어요.") + "\n"
+                continue
+            }
+            let url = folder.appending(path: name, directoryHint: .isDirectory)
+            do {
+                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+                return url
+            } catch CocoaError.fileWriteFileExists {
+                problem = String(localized: "같은 이름의 항목이 이미 있어요.") + "\n"
+            } catch {
+                NSAlert(error: error).runModal()
+                return nil
+            }
+        }
+    }
+
+    /// The name prompt files and folders share; the typed name, trimmed, or nil if cancelled.
+    private static func askName(title: String, note: String, name: String, selecting length: Int) -> String? {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = note
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.stringValue = name
+        field.usesSingleLineMode = true // a pasted line break becomes a space
+        alert.accessoryView = field
+        alert.addButton(withTitle: String(localized: "만들기"))
+        alert.addButton(withTitle: String(localized: "취소"))
+        alert.window.initialFirstResponder = field
+        DispatchQueue.main.async { field.currentEditor()?.selectedRange = NSRange(location: 0, length: length) }
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return field.stringValue.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// A name the file system and Finder accept as one item in the folder.
+    private static func isUsable(_ name: String) -> Bool {
+        !name.isEmpty && name != "." && name != ".." && !name.contains("/") && !name.contains(":")
+            && !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.union(.newlines).contains)
     }
 
     /// Whether the name ends in an extension the app or macOS knows (not just ".2" of "v1.2").

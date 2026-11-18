@@ -1,9 +1,10 @@
 import Cocoa
 import FinderSync
 
-/// Finder toolbar button and right-click menu. Asks the (unsandboxed) app to create the file,
-/// since this sandboxed extension can't write into arbitrary folders.
+/// Finder toolbar button and right-click menu. Asks the (unsandboxed) app to create the folder or
+/// file, since this sandboxed extension can't write into arbitrary folders.
 final class FinderSync: FIFinderSync {
+    private static let folderTitle = String(localized: "폴더")
     private static let askTitle = String(localized: "이름 직접 입력…")
     private static let formats = FileFormat.common + FileFormat.more
 
@@ -13,15 +14,17 @@ final class FinderSync: FIFinderSync {
     }
 
     override var toolbarItemName: String { String(localized: "새 파일") }
-    override var toolbarItemToolTip: String { String(localized: "이 폴더에 새 파일 만들기") }
+    override var toolbarItemToolTip: String { String(localized: "여기에 새 폴더나 파일 만들기") }
     override var toolbarItemImage: NSImage {
         NSImage(systemSymbolName: "doc.badge.plus", accessibilityDescription: String(localized: "새 파일"))!
     }
 
-    /// The toolbar button lists the common formats, the rest under 더 보기; a right-click, on a folder's
-    /// background or on a file in it, has the same under 새로 만들기 as on Windows.
+    /// The toolbar button lists a folder, then the common formats, the rest under 더 보기; a right-click,
+    /// on a folder's background or on a file in it, has the same under 새로 만들기 as on Windows.
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         let formats = NSMenu()
+        formats.addItem(item(Self.folderTitle))
+        formats.addItem(.separator())
         for format in FileFormat.common { formats.addItem(item(Self.title(for: format))) }
         let more = NSMenuItem(title: String(localized: "더 보기"), action: nil, keyEquivalent: "")
         more.submenu = NSMenu()
@@ -55,7 +58,9 @@ final class FinderSync: FIFinderSync {
         // The folder the menu was opened in, also when it was opened on a file.
         guard let folder = FIFinderSyncController.default().targetedURL() else { return }
         var query = [URLQueryItem(name: "dir", value: folder.path(percentEncoded: false))]
-        if sender.title == Self.askTitle {
+        if sender.title == Self.folderTitle {
+            query.append(URLQueryItem(name: "folder", value: "1"))
+        } else if sender.title == Self.askTitle {
             query.append(URLQueryItem(name: "ask", value: "1"))
         } else if let format = Self.formats.first(where: { Self.title(for: $0) == sender.title }) {
             query.append(URLQueryItem(name: "ext", value: format.fileExtension))

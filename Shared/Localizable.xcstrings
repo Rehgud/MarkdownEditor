@@ -61,6 +61,16 @@
         }
       }
     },
+    "같은 이름의 항목이 이미 있어요." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An item with that name already exists."
+          }
+        }
+      }
+    },
     "구분선" : {
       "localizations" : {
         "en" : {
@@ -157,6 +167,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Table of Contents"
+          }
+        }
+      }
+    },
+    "무제 폴더" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "untitled folder"
           }
         }
       }
@@ -291,6 +311,16 @@
         }
       }
     },
+    "새 폴더" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Folder"
+          }
+        }
+      }
+    },
     "새로 만들기" : {
       "localizations" : {
         "en" : {
@@ -327,6 +357,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ordered list"
+          }
+        }
+      }
+    },
+    "여기에 새 폴더나 파일 만들기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create a new folder or file here"
           }
         }
       }
@@ -397,16 +437,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Duplicate this line below"
-          }
-        }
-      }
-    },
-    "이 폴더에 새 파일 만들기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Create a new file in this folder"
           }
         }
       }
@@ -737,6 +767,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Edit"
+          }
+        }
+      }
+    },
+    "폴더" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folder"
           }
         }
       }
