@@ -26,8 +26,8 @@
 
 ## Requirements
 
-- macOS 27 or later
-- Xcode 27 or later
+- macOS 14 (Sonoma) or later to run it. It's been tested on macOS 27 only, so please open an issue if something looks off on an older version.
+- Xcode 27 to build it. Xcode 26 may also work but hasn't been tried.
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 
 ## Install

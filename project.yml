@@ -3,7 +3,7 @@ options:
   bundleIdPrefix: io.github.rehgud
   developmentLanguage: ko
   deploymentTarget:
-    macOS: "27.0"
+    macOS: "14.0"
 configFiles:
   Debug: Signing.xcconfig
   Release: Signing.xcconfig

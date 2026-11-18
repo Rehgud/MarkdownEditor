@@ -348,7 +348,8 @@ final class LocalAssets: NSObject, WKURLSchemeHandler {
         let ext = file.pathExtension.lowercased()
         if let font = ["woff": "font/woff", "woff2": "font/woff2"][ext] { return font }
         guard let type = UTType(filenameExtension: ext),
-              type.conforms(to: .image) || type.conforms(to: .font) || type.conforms(to: .css) else { return nil }
+              type.conforms(to: .image) || type.conforms(to: .font) || UTType("public.css").map(type.conforms) == true
+        else { return nil }
         return type.preferredMIMEType
     }
 }

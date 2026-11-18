@@ -17,11 +17,27 @@ struct MarkdownEditorApp: App {
     }
 }
 
+extension UTType {
+    /// `.markdown` is new in macOS 27; earlier systems know the identifier, or at least the extension.
+    static let markdownText = UTType("net.daringfireball.markdown") ?? UTType(filenameExtension: "md", conformingTo: .plainText)!
+}
+
+extension View {
+    /// The left-right resize pointer; `pointerStyle` needs macOS 15.
+    @ViewBuilder func columnResizePointer() -> some View {
+        if #available(macOS 15, *) {
+            pointerStyle(.columnResize)
+        } else {
+            onHover { $0 ? NSCursor.resizeLeftRight.push() : NSCursor.pop() }
+        }
+    }
+}
+
 struct TextDocument: FileDocument {
     /// Markdown first, so ⌘N documents save as .md. `.data` lets a file of any name open as text,
     /// including extensions macOS doesn't know (.go, .rs) or files as something else (.ts is video
     /// to it); a file that isn't text is refused below instead.
-    static let readableContentTypes: [UTType] = [.markdown, .plainText, .text, .data]
+    static let readableContentTypes: [UTType] = [.markdownText, .plainText, .text, .data]
     var text = ""
     /// Saved back the way it came: its encoding and byte-order mark.
     private var encoding = String.Encoding.utf8
@@ -210,7 +226,7 @@ private struct SplitDivider: View {
             .frame(width: Self.width).frame(maxHeight: .infinity)
             .background(Color(nsColor: MarkdownHighlighter.background))
             .contentShape(.rect)
-            .pointerStyle(.columnResize)
+            .columnResizePointer()
             .onTapGesture(count: 2) { share = 0.5 }
             .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
                 .onChanged { drag in
@@ -339,7 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let key = "askedToBeDefaultMarkdownApp"
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
-        NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: .markdown) { _ in }
+        NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: .markdownText) { _ in }
     }
 
     /// From the Finder extension: `markdowneditor://new?dir=/path&ext=py` makes a Python file there,
