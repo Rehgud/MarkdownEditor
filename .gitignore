@@ -7,3 +7,5 @@ xcuserdata/
 .DS_Store
 # Icon design preview, not part of the app.
 icon-variants.png
+# Agent worktrees.
+.claude/

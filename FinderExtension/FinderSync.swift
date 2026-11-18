@@ -13,10 +13,10 @@ final class FinderSync: FIFinderSync {
         FIFinderSyncController.default().directoryURLs = [URL(filePath: "/")]
     }
 
-    override var toolbarItemName: String { String(localized: "새 파일") }
+    override var toolbarItemName: String { String(localized: "새로 만들기") }
     override var toolbarItemToolTip: String { String(localized: "여기에 새 폴더나 파일 만들기") }
     override var toolbarItemImage: NSImage {
-        NSImage(systemSymbolName: "doc.badge.plus", accessibilityDescription: String(localized: "새 파일"))!
+        NSImage(systemSymbolName: "doc.badge.plus", accessibilityDescription: String(localized: "새로 만들기"))!
     }
 
     /// The toolbar button lists a folder, then the common formats, the rest under 더 보기; a right-click,

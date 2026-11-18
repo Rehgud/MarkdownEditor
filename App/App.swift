@@ -22,14 +22,6 @@ struct TextDocument: FileDocument {
     /// including extensions macOS doesn't know (.go, .rs) or files as something else (.ts is video
     /// to it); a file that isn't text is refused below instead.
     static let readableContentTypes: [UTType] = [.markdown, .plainText, .text, .data]
-    /// Korean Windows' encoding (EUC-KR and more): Excel's CSV and many public-data downloads.
-    private static let cp949 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(
-        CFStringEncoding(CFStringEncodings.dosKorean.rawValue)))
-    /// Byte-order marks and the encodings they announce: UTF-8 (Excel's "CSV UTF-8"), and UTF-16, which
-    /// Windows calls "Unicode" (desktop.ini, Notepad).
-    private static let marks: [(bom: Data, encoding: String.Encoding)] = [
-        (Data([0xEF, 0xBB, 0xBF]), .utf8), (Data([0xFF, 0xFE]), .utf16LittleEndian), (Data([0xFE, 0xFF]), .utf16BigEndian),
-    ]
     var text = ""
     /// Saved back the way it came: its encoding and byte-order mark.
     private var encoding = String.Encoding.utf8
@@ -39,25 +31,14 @@ struct TextDocument: FileDocument {
 
     init(configuration: ReadConfiguration) throws {
         guard let data = configuration.file.regularFileContents else { throw CocoaError(.fileReadCorruptFile) }
-        if !data.starts(with: [0xFF, 0xFE, 0, 0]), // UTF-32, which shares UTF-16's first bytes
-           let mark = Self.marks.first(where: { data.starts(with: $0.bom) }),
-           let text = String(data: data.dropFirst(mark.bom.count), encoding: mark.encoding) {
-            (self.text, encoding, bom) = (text, mark.encoding, mark.bom)
-        } else if let text = String(data: data, encoding: .utf8) {
-            self.text = text
-        } else if let text = String(data: data, encoding: Self.cp949), text.data(using: Self.cp949) == data {
-            // Only CP949 that saves back byte for byte: its user-defined rows decode but don't encode.
-            (self.text, encoding) = (text, Self.cp949)
-        } else {
-            // Refuse the rest rather than decode lossily and overwrite the original on save.
-            throw CocoaError(.fileReadInapplicableStringEncoding)
-        }
+        guard let decoded = decodeText(data) else { throw CocoaError(.fileReadInapplicableStringEncoding) }
+        (text, encoding, bom) = decoded
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         if let data = text.data(using: encoding) { return FileWrapper(regularFileWithContents: bom + data) }
         // CP949 text that gained a character CP949 lacks (emoji): UTF-8 keeps it, its BOM keeps Excel reading it.
-        return FileWrapper(regularFileWithContents: Self.marks[0].bom + Data(text.utf8))
+        return FileWrapper(regularFileWithContents: byteOrderMarks[0].bom + Data(text.utf8))
     }
 }
 
